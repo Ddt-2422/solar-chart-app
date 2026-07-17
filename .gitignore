@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+sample_solar_data.xlsx
+chart_preview.png
+.venv/
+venv/
