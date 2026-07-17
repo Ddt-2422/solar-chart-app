@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from io import BytesIO
 
 st.set_page_config(
     page_title="Solar Trend Analyzer",
@@ -11,6 +12,36 @@ st.set_page_config(
 st.title("📈 Solar Plant Trend Analyzer")
 
 st.write("Upload Excel file to validate data and generate chart.")
+
+
+# -----------------------------
+# Blank template (for download)
+# -----------------------------
+
+def build_template():
+    columns = [
+        "Date",
+        "Time",
+        "Active Power(kW)",
+        "Reactive Power(kVAr)",
+        "PoA(W/m2)"
+    ]
+    # one example row so the expected format is clear, then blank rows
+    rows = [["2026-07-17", "05:00:00", 0, 0, 0]]
+    rows += [["", "", "", "", ""] for _ in range(20)]
+    template_df = pd.DataFrame(rows, columns=columns)
+
+    buffer = BytesIO()
+    template_df.to_excel(buffer, index=False)
+    buffer.seek(0)
+    return buffer
+
+st.download_button(
+    label="⬇️ Download Blank Template (Excel)",
+    data=build_template(),
+    file_name="solar_data_template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
 
 uploaded_file = st.file_uploader(
     "Upload Excel File",
