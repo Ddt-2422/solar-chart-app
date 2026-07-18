@@ -66,7 +66,9 @@ try:
     st.dataframe(df)
 
     # -----------------------------
-    # Required Columns
+    # Columns are identified by POSITION, not by name.
+    # Column 1 = Date, 2 = Time, 3 = Active Power,
+    # 4 = Reactive Power, 5 = PoA. Original names can be anything.
     # -----------------------------
 
     required_columns = [
@@ -79,14 +81,23 @@ try:
 
     st.subheader("Data Validation")
 
-    missing_columns = [col for col in required_columns if col not in df.columns]
-
-    if len(missing_columns) > 0:
-        st.error("Missing Columns")
-        st.write(missing_columns)
+    if df.shape[1] < len(required_columns):
+        st.error(
+            f"Need at least {len(required_columns)} columns "
+            f"(Date, Time, Active Power, Reactive Power, PoA) by position. "
+            f"Found only {df.shape[1]}."
+        )
         st.stop()
-    else:
-        st.success("All Required Columns Found")
+
+    # Take the first 5 columns by position and give them the standard names
+    df = df.iloc[:, :len(required_columns)].copy()
+    df.columns = required_columns
+
+    st.success("Columns mapped by position ✅")
+    st.caption(
+        "Column 1 → Date, 2 → Time, 3 → Active Power(kW), "
+        "4 → Reactive Power(kVAr), 5 → PoA(W/m2)"
+    )
 
     # -----------------------------
     # Blank Values
