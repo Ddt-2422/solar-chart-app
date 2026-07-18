@@ -188,6 +188,8 @@ try:
     # If the visible data spans more than one day, show date + time on the axis
     spans_multiple_days = chart_df["DateOnly"].nunique() > 1
     tick_format = "%d-%b %H:%M" if spans_multiple_days else "%H:%M"
+    # Single day -> one tick every hour; multi-day -> let Plotly auto-space
+    tick_dtick = None if spans_multiple_days else 3600000
 
     fig = go.Figure()
 
@@ -221,7 +223,8 @@ try:
         height=500,
         xaxis=dict(
             title="Time",
-            tickformat=tick_format
+            tickformat=tick_format,
+            dtick=tick_dtick
         ),
 
         # LEFT AXIS (auto-scales to the data)
