@@ -89,14 +89,21 @@ try:
         )
         st.stop()
 
+    # Keep the ORIGINAL column headers (with their units) so we can show
+    # exactly what the user typed in the Excel on the chart labels.
+    original_names = list(df.columns[:len(required_columns)])
+    label_active = original_names[2]
+    label_reactive = original_names[3]
+    label_poa = original_names[4]
+
     # Take the first 5 columns by position and give them the standard names
     df = df.iloc[:, :len(required_columns)].copy()
     df.columns = required_columns
 
     st.success("Columns mapped by position ✅")
     st.caption(
-        "Column 1 → Date, 2 → Time, 3 → Active Power(kW), "
-        "4 → Reactive Power(kVAr), 5 → PoA(W/m2)"
+        f"Column 1 → Date, 2 → Time, 3 → {label_active}, "
+        f"4 → {label_reactive}, 5 → {label_poa}"
     )
 
     # -----------------------------
@@ -184,33 +191,33 @@ try:
 
     fig = go.Figure()
 
-    # Active Power (LEFT)
+    # Active Power (LEFT) — label taken from the Excel header
     fig.add_trace(go.Scatter(
         x=chart_df["DateTime"],
         y=chart_df["Active Power(kW)"],
         mode="lines",
-        name="Active Power"
+        name=label_active
     ))
 
-    # Reactive Power (LEFT)
+    # Reactive Power (LEFT) — label taken from the Excel header
     fig.add_trace(go.Scatter(
         x=chart_df["DateTime"],
         y=chart_df["Reactive Power(kVAr)"],
         mode="lines",
-        name="Reactive Power"
+        name=label_reactive
     ))
 
-    # POA (RIGHT)
+    # POA (RIGHT) — label taken from the Excel header
     fig.add_trace(go.Scatter(
         x=chart_df["DateTime"],
         y=chart_df["PoA(W/m2)"],
         mode="lines",
-        name="POA",
+        name=label_poa,
         yaxis="y2"
     ))
 
     fig.update_layout(
-        title="Active Power, Reactive Power & POA",
+        title=f"{label_active}, {label_reactive} & {label_poa}",
         height=500,
         xaxis=dict(
             title="Time",
@@ -219,14 +226,14 @@ try:
 
         # LEFT AXIS (auto-scales to the data)
         yaxis=dict(
-            title="Power (kW / kVAr)",
+            title=f"{label_active} / {label_reactive}",
             autorange=True,
             rangemode="tozero"
         ),
 
         # RIGHT AXIS (auto-scales to the data)
         yaxis2=dict(
-            title="POA (W/m²)",
+            title=label_poa,
             overlaying="y",
             side="right",
             autorange=True,
