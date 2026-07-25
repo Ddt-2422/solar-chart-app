@@ -232,18 +232,45 @@ def _guess(keys, exclude=None):
             return c
     return None
 
+def _parses_with_time(col):
+    """True if the column parses to datetimes that carry a varying time-of-day."""
+    p = pd.to_datetime(df[col].head(500), errors="coerce")
+    if p.notna().mean() < 0.7:
+        return False
+    secs = p.dt.hour * 3600 + p.dt.minute * 60 + p.dt.second
+    return secs.dropna().nunique() > 1
+
+# ---- Auto-detect: single combined column vs separate Date + Time columns ----
+_date_named = [c for c in all_cols if "date" in c.lower() and "time" not in c.lower()]
+_time_named = [c for c in all_cols if "time" in c.lower() and "date" not in c.lower()]
+
+if _date_named and _time_named and not _parses_with_time(_date_named[0]):
+    # a plain date column + a separate time column → combine
+    _auto_idx, _auto_date, _auto_time = 1, _date_named[0], _time_named[0]
+    _auto_dt = None
+else:
+    # one column already holds the full timestamp
+    _auto_idx, _auto_date, _auto_time = 0, None, None
+    _auto_dt = next((c for c in [*_time_named, *_date_named, *all_cols] if _parses_with_time(c)), None) \
+        or _guess(["date", "time"]) or all_cols[0]
+
 ts_mode = st.sidebar.radio(
     "Timestamp format",
     ["One column", "Date + Time (separate)"],
+    index=_auto_idx,
     horizontal=True,
-    help="Use 'Date + Time' if your date and time are in two separate columns.",
+    help="Auto-detected from your columns — change only if the guess is wrong.",
+)
+st.sidebar.caption(
+    "🔎 Auto-detected: "
+    + ("**Date + Time** in separate columns" if _auto_idx == 1 else "single **timestamp** column")
 )
 
 # columns to hide from the plottable-parameter list (source date/time columns)
 extra_exclude = []
 
 if ts_mode == "One column":
-    default_dt_col = _guess(["date", "time"]) or all_cols[0]
+    default_dt_col = _auto_dt or _guess(["date", "time"]) or all_cols[0]
     dt_col = st.sidebar.selectbox(
         "Which column is Date/Time?", all_cols, index=all_cols.index(default_dt_col)
     )
@@ -258,8 +285,8 @@ if ts_mode == "One column":
             st.error(f"Could not convert '{dt_col}' to datetime: {e}")
             st.stop()
 else:
-    date_guess = _guess(["date"]) or all_cols[0]
-    time_guess = _guess(["time"], exclude=date_guess) or next(
+    date_guess = _auto_date or _guess(["date"]) or all_cols[0]
+    time_guess = _auto_time or _guess(["time"], exclude=date_guess) or next(
         (c for c in all_cols if c != date_guess), all_cols[0]
     )
     date_col = st.sidebar.selectbox("Date column", all_cols, index=all_cols.index(date_guess))
