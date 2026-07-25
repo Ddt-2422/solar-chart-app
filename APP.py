@@ -492,11 +492,13 @@ with tab_stats:
     desc = plot_df[selected_params].describe().T
     desc["range"] = desc["max"] - desc["min"]
     desc = desc.rename(columns={"50%": "median"})
-    st.dataframe(
+    styled = (
         desc[["count", "mean", "std", "min", "25%", "median", "75%", "max", "range"]]
-        .style.format("{:.3f}").background_gradient(cmap="Blues", subset=["mean", "max"]),
-        use_container_width=True,
+        .style.format("{:.3f}")
+        .bar(subset=["mean"], color="#3987e5")
+        .bar(subset=["max"], color="#199e70")
     )
+    st.dataframe(styled, use_container_width=True)
 
     st.markdown('<div class="sec">Data Quality</div>', unsafe_allow_html=True)
     total = len(plot_df)
