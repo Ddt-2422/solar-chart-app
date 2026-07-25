@@ -221,27 +221,69 @@ else:
 st.sidebar.success(f"Loaded  ·  {df.shape[0]:,} rows × {df.shape[1]} cols")
 
 # ---------------------------------------------------------------
-# Sidebar · Step 2 — Timestamp column
+# Sidebar · Step 2 — Timestamp column (single column OR separate Date + Time)
 # ---------------------------------------------------------------
 st.sidebar.header("2️⃣  Timestamp Column")
 all_cols = df.columns.tolist()
 
-default_dt_col = next((c for c in all_cols if "date" in c.lower() or "time" in c.lower()), None)
-dt_col = st.sidebar.selectbox(
-    "Which column is Date/Time?",
-    all_cols,
-    index=all_cols.index(default_dt_col) if default_dt_col else 0,
+def _guess(keys, exclude=None):
+    for c in all_cols:
+        if c != exclude and any(k in c.lower() for k in keys):
+            return c
+    return None
+
+ts_mode = st.sidebar.radio(
+    "Timestamp format",
+    ["One column", "Date + Time (separate)"],
+    horizontal=True,
+    help="Use 'Date + Time' if your date and time are in two separate columns.",
 )
 
-try:
-    df[dt_col] = pd.to_datetime(df[dt_col])
-except Exception:
+# columns to hide from the plottable-parameter list (source date/time columns)
+extra_exclude = []
+
+if ts_mode == "One column":
+    default_dt_col = _guess(["date", "time"]) or all_cols[0]
+    dt_col = st.sidebar.selectbox(
+        "Which column is Date/Time?", all_cols, index=all_cols.index(default_dt_col)
+    )
     try:
-        col = pd.to_numeric(df[dt_col], errors="raise")
-        unit = "ms" if col.max() > 1e12 else "s"
-        df[dt_col] = pd.to_datetime(col, unit=unit)
+        df[dt_col] = pd.to_datetime(df[dt_col])
+    except Exception:
+        try:
+            col = pd.to_numeric(df[dt_col], errors="raise")
+            unit = "ms" if col.max() > 1e12 else "s"
+            df[dt_col] = pd.to_datetime(col, unit=unit)
+        except Exception as e:
+            st.error(f"Could not convert '{dt_col}' to datetime: {e}")
+            st.stop()
+else:
+    date_guess = _guess(["date"]) or all_cols[0]
+    time_guess = _guess(["time"], exclude=date_guess) or next(
+        (c for c in all_cols if c != date_guess), all_cols[0]
+    )
+    date_col = st.sidebar.selectbox("Date column", all_cols, index=all_cols.index(date_guess))
+    time_col = st.sidebar.selectbox("Time column", all_cols, index=all_cols.index(time_guess))
+    if date_col == time_col:
+        st.sidebar.error("Date and Time columns must be different.")
+        st.stop()
+
+    dt_col = "Date + Time"
+    extra_exclude = [date_col, time_col]
+    try:
+        date_part = pd.to_datetime(df[date_col], errors="coerce").dt.normalize()
+        tnum = pd.to_numeric(df[time_col], errors="coerce")
+        # Excel stores a time-only cell as a fraction of a day (0–1)
+        if tnum.notna().mean() > 0.8 and tnum.dropna().between(0, 1).mean() > 0.5:
+            tod = pd.to_timedelta(tnum.fillna(0) * 24.0, unit="h")
+        else:
+            t = pd.to_datetime(df[time_col].astype(str), errors="coerce")
+            tod = (t - t.dt.normalize()).fillna(pd.Timedelta(0))
+        df[dt_col] = date_part + tod
+        if df[dt_col].isna().all():
+            raise ValueError("no valid combined datetimes were produced")
     except Exception as e:
-        st.error(f"Could not convert '{dt_col}' to datetime: {e}")
+        st.error(f"Could not combine '{date_col}' + '{time_col}': {e}")
         st.stop()
 
 df = df.sort_values(by=dt_col).reset_index(drop=True)
@@ -291,7 +333,7 @@ st.sidebar.info(f"Filtered rows  ·  {filtered_df.shape[0]:,}")
 st.sidebar.header("4️⃣  Parameters & Axis")
 numeric_cols = [
     c for c in df.columns
-    if c not in [dt_col, "__date_only__"] and pd.api.types.is_numeric_dtype(df[c])
+    if c not in [dt_col, "__date_only__", *extra_exclude] and pd.api.types.is_numeric_dtype(df[c])
 ]
 if not numeric_cols:
     st.warning("No numeric columns found in the data.")
