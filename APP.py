@@ -234,7 +234,7 @@ def _guess(keys, exclude=None):
 
 def _parses_with_time(col):
     """True if the column parses to datetimes that carry a varying time-of-day."""
-    p = pd.to_datetime(df[col].head(500), errors="coerce")
+    p = pd.to_datetime(df[col].head(500), errors="coerce", dayfirst=True)
     if p.notna().mean() < 0.7:
         return False
     secs = p.dt.hour * 3600 + p.dt.minute * 60 + p.dt.second
@@ -254,28 +254,40 @@ else:
     _auto_dt = next((c for c in [*_time_named, *_date_named, *all_cols] if _parses_with_time(c)), None) \
         or _guess(["date", "time"]) or all_cols[0]
 
-ts_mode = st.sidebar.radio(
-    "Timestamp format",
-    ["One column", "Date + Time (separate)"],
-    index=_auto_idx,
-    horizontal=True,
-    help="Auto-detected from your columns — change only if the guess is wrong.",
-)
-st.sidebar.caption(
-    "🔎 Auto-detected: "
-    + ("**Date + Time** in separate columns" if _auto_idx == 1 else "single **timestamp** column")
-)
-
 # columns to hide from the plottable-parameter list (source date/time columns)
 extra_exclude = []
 
-if ts_mode == "One column":
-    default_dt_col = _auto_dt or _guess(["date", "time"]) or all_cols[0]
-    dt_col = st.sidebar.selectbox(
-        "Which column is Date/Time?", all_cols, index=all_cols.index(default_dt_col)
+# The timestamp is set up automatically. The controls stay tucked inside an
+# expander so nothing clutters the sidebar unless you want to override.
+with st.sidebar.expander("⚙️ Change timestamp columns", expanded=False):
+    ts_mode = st.radio(
+        "Timestamp format", ["One column", "Date + Time (separate)"],
+        index=_auto_idx, horizontal=True,
     )
+    if ts_mode == "One column":
+        default_dt_col = _auto_dt or _guess(["date", "time"]) or all_cols[0]
+        dt_col = st.selectbox(
+            "Which column is Date/Time?", all_cols, index=all_cols.index(default_dt_col)
+        )
+        date_col = time_col = None
+    else:
+        date_guess = _auto_date or _guess(["date"]) or all_cols[0]
+        time_guess = _auto_time or _guess(["time"], exclude=date_guess) or next(
+            (c for c in all_cols if c != date_guess), all_cols[0]
+        )
+        date_col = st.selectbox("Date column", all_cols, index=all_cols.index(date_guess))
+        time_col = st.selectbox("Time column", all_cols, index=all_cols.index(time_guess))
+        dt_col = "Date + Time"
+
+# One clean confirmation line (reflects the actual selection)
+if ts_mode == "One column":
+    st.sidebar.caption(f"🕒  Timestamp: **{dt_col}**")
+else:
+    st.sidebar.caption(f"🕒  Timestamp: **{date_col}** + **{time_col}** combined")
+
+if ts_mode == "One column":
     try:
-        df[dt_col] = pd.to_datetime(df[dt_col])
+        df[dt_col] = pd.to_datetime(df[dt_col], dayfirst=True)
     except Exception:
         try:
             col = pd.to_numeric(df[dt_col], errors="raise")
@@ -285,20 +297,12 @@ if ts_mode == "One column":
             st.error(f"Could not convert '{dt_col}' to datetime: {e}")
             st.stop()
 else:
-    date_guess = _auto_date or _guess(["date"]) or all_cols[0]
-    time_guess = _auto_time or _guess(["time"], exclude=date_guess) or next(
-        (c for c in all_cols if c != date_guess), all_cols[0]
-    )
-    date_col = st.sidebar.selectbox("Date column", all_cols, index=all_cols.index(date_guess))
-    time_col = st.sidebar.selectbox("Time column", all_cols, index=all_cols.index(time_guess))
     if date_col == time_col:
         st.sidebar.error("Date and Time columns must be different.")
         st.stop()
-
-    dt_col = "Date + Time"
     extra_exclude = [date_col, time_col]
     try:
-        date_part = pd.to_datetime(df[date_col], errors="coerce").dt.normalize()
+        date_part = pd.to_datetime(df[date_col], errors="coerce", dayfirst=True).dt.normalize()
         tnum = pd.to_numeric(df[time_col], errors="coerce")
         # Excel stores a time-only cell as a fraction of a day (0–1)
         if tnum.notna().mean() > 0.8 and tnum.dropna().between(0, 1).mean() > 0.5:
