@@ -458,16 +458,52 @@ if filtered_df.shape[0] > 200_000 and resample_rule is None:
 st.markdown('<div class="sec">Live Snapshot</div>', unsafe_allow_html=True)
 kpi_cards(plot_df, selected_params, dt_col)
 
-# X-axis tick format
+# X-axis tick format + smart rotation so dense labels don't overlap
+fine = dtick_ms is not None and dtick_ms < 3_600_000   # finer than 1 hour
 if dtick_ms is not None and dtick_ms < 1_000:
     tick_fmt = "%H:%M:%S.%L"
 elif dtick_ms is not None and dtick_ms < 60_000:
     tick_fmt = "%H:%M:%S"
+elif fine:
+    tick_fmt = "%H:%M"          # single line when tilted
 else:
     tick_fmt = "%H:%M\n%d-%b"
-xaxis_settings = dict(tickformat=tick_fmt, tickangle=0)
+
+def _human_ms(ms):
+    if ms < 1_000:
+        return f"{int(ms)} ms"
+    if ms < 60_000:
+        return f"{int(ms/1_000)} sec"
+    if ms < 3_600_000:
+        return f"{int(ms/60_000)} min"
+    return f"{ms/3_600_000:.0f} hour" + ("s" if ms > 3_600_000 else "")
+
+xaxis_settings = dict(
+    tickformat=tick_fmt,
+    tickangle=-45 if fine else 0,   # tilt fine labels so they don't collide
+    tickfont=dict(size=10),
+    automargin=True,                # grow the bottom margin to fit tilted labels
+)
+
+# Cap the number of labels so the axis never becomes an unreadable smear.
+# We keep the chosen interval as the *base* granularity and, if that yields too
+# many labels for the current range, step it up to the nearest multiple that fits.
 if dtick_ms is not None:
-    xaxis_settings["dtick"] = dtick_ms
+    eff_dtick = dtick_ms
+    if not plot_df.empty:
+        _span_ms = (plot_df[dt_col].max() - plot_df[dt_col].min()).total_seconds() * 1000
+        _n = _span_ms / dtick_ms if dtick_ms else 0
+        _max_labels = 60
+        if _n > _max_labels:
+            import math
+            eff_dtick = dtick_ms * math.ceil(_n / _max_labels)
+    xaxis_settings["dtick"] = eff_dtick
+    if eff_dtick != dtick_ms:
+        st.info(
+            f"ℹ️ '{tick_choice}' is range ke liye bahut dense tha (~{int(_n)} labels). "
+            f"Readable rakhne ke liye har **{_human_ms(eff_dtick)}** pe label dikha raha hoon. "
+            "Fine labels chahiye to date/time-range chhota karo, ya chart ko zoom karo."
+        )
 
 
 def _rgba(hex_color, alpha):
